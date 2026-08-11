@@ -1,0 +1,26 @@
+[project]
+name = "funes"
+version = "0.1.0"
+description = "Local, offline semantic image search powered by CLIP and sqlite-vector."
+requires-python = ">=3.9"
+dependencies = [
+    "fastembed>=0.7.0",
+    "numpy>=1.24",
+    "PyQt6>=6.7",
+    "sqliteai-vector>=1.0.0",
+]
+
+[project.scripts]
+funes-cli = "funes.cli:main"
+funes = "funes.interface.application:main"
+
+[build-system]
+requires = ["uv_build>=0.11.30,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=7.1.0",
+    "pytest-qt>=4.4",
+]
