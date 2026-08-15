@@ -20,6 +20,14 @@ The solution used by Funes is fastembed (https://github.com/qdrant/fastembed/), 
 
 In order to avoid remote storage of embeddings, sqlite-vector (https://github.com/sqliteai/sqlite-vector) is used to store and retrieve the generated vectors. This also avoids the concerns with running local servers and managing docker containers.
 
+## Installing
+
+Install using `pip`:
+
+```bash
+pip install funes-core
+```
+
 ## Python package
 
 Funes can be used as a Python package by importing the search engine and storage classes:
