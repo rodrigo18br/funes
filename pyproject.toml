@@ -1,6 +1,10 @@
 [project]
-name = "funes"
+name = "funes-core"
 version = "0.1.0"
+readme="README.md"
+authors=[
+    {name="Rodrigo Oliveira", email="rodrigo18br@hotmail.com"}
+]
 description = "Local, offline semantic image search powered by CLIP and sqlite-vector."
 requires-python = ">=3.9"
 dependencies = [
@@ -9,6 +13,7 @@ dependencies = [
     "PyQt6>=6.7",
     "sqliteai-vector>=1.0.0",
 ]
+license = "MIT"
 
 [project.scripts]
 funes-cli = "funes.cli:main"
@@ -24,3 +29,9 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-qt>=4.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/rodrigo18br/funes"
+
+[tool.uv.build-backend]
+module-name = "funes"
