@@ -40,6 +40,13 @@ class ImageRecord:
     directory: str
 
 
+@dataclass(frozen=True)
+class ModelWarmupResult:
+    """Result returned after startup model preparation."""
+
+    ready: bool
+
+
 class InterfaceService:
     """Small facade over storage, search, and metadata for UI callers."""
 
@@ -63,6 +70,10 @@ class InterfaceService:
         if self._search_engine is None:
             self._search_engine = SearchEngine(self._store)
         return self._search_engine
+
+    def warmup_models(self) -> ModelWarmupResult:
+        with self._lock:
+            return ModelWarmupResult(ready=self.search_engine.warmup_models())
 
     def close(self) -> None:
         with self._lock:
