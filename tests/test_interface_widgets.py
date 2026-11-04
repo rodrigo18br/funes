@@ -6,7 +6,12 @@ from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QLabel, QMessageBox, QToolButton
 
-from funes.interface.main_window import MainWindow
+from funes.interface.main_window import (
+    MODEL_WARMUP_FAILED,
+    MODEL_WARMUP_FINISHED,
+    MODEL_WARMUP_RUNNING,
+    MainWindow,
+)
 from funes.interface.service import DirectorySummary, ImageRecord, InterfaceService, LibraryStats
 from funes.interface.widgets import (
     DirectoryContentsView,
@@ -45,6 +50,110 @@ def test_main_window_constructs_shell(qtbot, tmp_path) -> None:
     assert window.directory_panel.directory_list.count() == 1
     assert window.welcome_view.stats.text() == (
         "3 indexed images\n1 imported directories"
+    )
+
+
+@mock.patch.object(MainWindow, "_run_worker", autospec=True)
+def test_main_window_starts_model_warmup_worker_after_show(
+    run_worker, qtbot, tmp_path
+) -> None:
+    service = _service_with_library()
+    window = MainWindow(tmp_path / "funes.db", service=service)
+    qtbot.addWidget(window)
+
+    window.show()
+    qtbot.waitUntil(lambda: run_worker.called)
+
+    call = run_worker.call_args.args[1]
+    service.warmup_models.return_value = object()
+    assert call() is service.warmup_models.return_value
+    service.warmup_models.assert_called_once_with()
+    assert window.model_warmup_state == MODEL_WARMUP_RUNNING
+
+
+@mock.patch.object(MainWindow, "_run_worker", autospec=True)
+def test_main_window_shows_model_warmup_loading_indication(
+    run_worker, qtbot, tmp_path
+) -> None:
+    service = _service_with_library()
+    window = MainWindow(tmp_path / "funes.db", service=service)
+    qtbot.addWidget(window)
+
+    window.show()
+    qtbot.waitUntil(lambda: run_worker.called)
+
+    assert window.warmup_status.isVisible()
+    assert window.warmup_status.text() == "Preparing search models..."
+    assert window.warmup_progress.isVisible()
+    assert not window.search_bar.input.isEnabled()
+    assert not window.directory_panel.import_button.isEnabled()
+
+
+@mock.patch.object(MainWindow, "_run_worker", autospec=True)
+def test_main_window_successful_model_warmup_clears_loading_indication(
+    run_worker, qtbot, tmp_path
+) -> None:
+    service = _service_with_library()
+
+    def run_now(_window, _call, on_finished, _on_failed) -> None:
+        on_finished(object())
+
+    run_worker.side_effect = run_now
+    window = MainWindow(tmp_path / "funes.db", service=service)
+    qtbot.addWidget(window)
+
+    window.show()
+    qtbot.waitUntil(lambda: window.model_warmup_state == MODEL_WARMUP_FINISHED)
+
+    assert not window.warmup_status.isVisible()
+    assert not window.warmup_progress.isVisible()
+    assert window.search_bar.input.isEnabled()
+    assert window.directory_panel.import_button.isEnabled()
+    assert "Search models are ready." in window.statusBar().currentMessage()
+
+
+@mock.patch.object(MainWindow, "_run_worker", autospec=True)
+def test_main_window_model_warmup_failure_reports_error_and_stays_responsive(
+    run_worker, qtbot, tmp_path
+) -> None:
+    service = _service_with_library(directories=[DirectorySummary("/photos", 1)])
+    service.directory_contents.return_value = []
+
+    def fail_warmup(_window, _call, _on_finished, on_failed) -> None:
+        on_failed("network unavailable")
+
+    run_worker.side_effect = fail_warmup
+    window = MainWindow(tmp_path / "funes.db", service=service)
+    qtbot.addWidget(window)
+
+    window.show()
+    qtbot.waitUntil(lambda: window.model_warmup_state == MODEL_WARMUP_FAILED)
+
+    assert window.warmup_status.isVisible()
+    assert window.warmup_status.text() == "Search models unavailable."
+    assert not window.warmup_progress.isVisible()
+    assert window.search_bar.input.isEnabled()
+    assert window.directory_panel.import_button.isEnabled()
+    assert "Model preparation failed: network unavailable" in (
+        window.statusBar().currentMessage()
+    )
+
+
+@mock.patch.object(MainWindow, "_run_worker", autospec=True)
+def test_main_window_search_while_model_warmup_running_reports_wait(
+    run_worker, qtbot, tmp_path
+) -> None:
+    service = _service_with_library()
+    window = MainWindow(tmp_path / "funes.db", service=service)
+    qtbot.addWidget(window)
+
+    window.show()
+    qtbot.waitUntil(lambda: run_worker.called)
+    window._search_text("blue chair", None)
+
+    service.search_text.assert_not_called()
+    assert "Search models are still being prepared" in (
+        window.statusBar().currentMessage()
     )
 
 

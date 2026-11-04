@@ -56,6 +56,21 @@ def test_text_search_passes_optional_directory_scope() -> None:
     assert records[0].filename == "one.jpg"
 
 
+def test_warmup_models_initializes_search_engine_without_searching() -> None:
+    store = mock.create_autospec(SQLiteStore, instance=True)
+    engine = mock.create_autospec(SearchEngine, instance=True)
+    engine.warmup_models.return_value = True
+    service = InterfaceService(store, engine)
+
+    result = service.warmup_models()
+
+    assert result.ready is True
+    engine.warmup_models.assert_called_once_with()
+    engine.search_text.assert_not_called()
+    engine.search_image.assert_not_called()
+    engine.index_images.assert_not_called()
+
+
 def test_directory_contents_passes_pagination() -> None:
     store = mock.create_autospec(SQLiteStore, instance=True)
     store.images_in_directory.return_value = ["/photos/two.jpg"]
