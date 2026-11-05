@@ -53,11 +53,26 @@ funes-cli search --image ./cat.jpg
 Launch the Qt interface with:
 
 ```bash
-uv run funes
+funes
 ```
 
 To point the interface at a specific SQLite database, pass the path:
 
 ```bash
-uv run funes ./funes.db
+funes ./funes.db
+```
+
+
+## Dev Installation
+
+For installing the repo for development, use `uv`:
+
+```bash
+uv sync
+```
+
+Run the code through `uv` as well:
+
+```bash
+uv run funes
 ```

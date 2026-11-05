@@ -8,8 +8,10 @@ from PyQt6.QtCore import QSettings, QSize, QThread
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -31,6 +33,10 @@ DIRECTORY_PAGE_SIZE = 10
 LIST_MODE_DIRECTORY = "directory"
 LIST_MODE_TEXT_SEARCH = "text_search"
 LIST_MODE_SIMILAR_IMAGES = "similar_images"
+MODEL_WARMUP_IDLE = "idle"
+MODEL_WARMUP_RUNNING = "running"
+MODEL_WARMUP_FINISHED = "finished"
+MODEL_WARMUP_FAILED = "failed"
 
 LIGHT_STYLESHEET = """
 QMainWindow, QWidget {
@@ -51,6 +57,18 @@ QLabel#welcomeStats {
 QLabel#contentMessage {
     color: #51605f;
     font-size: 16px;
+}
+QLabel#warmupStatus {
+    color: #51605f;
+}
+QProgressBar#warmupProgress {
+    border: 1px solid #c8d0cc;
+    border-radius: 4px;
+    max-height: 8px;
+    text-align: center;
+}
+QProgressBar#warmupProgress::chunk {
+    background: #3c8d79;
 }
 QLineEdit {
     background: #ffffff;
@@ -106,6 +124,18 @@ QLabel#welcomeStats {
 QLabel#contentMessage {
     color: #aab8b2;
     font-size: 16px;
+}
+QLabel#warmupStatus {
+    color: #aab8b2;
+}
+QProgressBar#warmupProgress {
+    border: 1px solid #3c474b;
+    border-radius: 4px;
+    max-height: 8px;
+    text-align: center;
+}
+QProgressBar#warmupProgress::chunk {
+    background: #74b7a6;
 }
 QLineEdit {
     background: #252b2e;
@@ -169,6 +199,9 @@ class MainWindow(QMainWindow):
         self._list_page_worker_running = False
         self._list_request_id = 0
         self._removing_directories: set[str] = set()
+        self._model_warmup_state = MODEL_WARMUP_IDLE
+        self._startup_warmup_started = False
+        self._startup_warmup_failure_reported = False
 
         self.setWindowTitle("Funes")
         self._restore_window_size()
@@ -208,6 +241,19 @@ class MainWindow(QMainWindow):
         self.search_bar = SearchBar()
         self.search_bar.search_requested.connect(self._search_text)
         top_bar.addWidget(self.search_bar, 1)
+
+        self.warmup_status = QLabel()
+        self.warmup_status.setObjectName("warmupStatus")
+        self.warmup_status.setVisible(False)
+        top_bar.addWidget(self.warmup_status)
+
+        self.warmup_progress = QProgressBar()
+        self.warmup_progress.setObjectName("warmupProgress")
+        self.warmup_progress.setRange(0, 0)
+        self.warmup_progress.setTextVisible(False)
+        self.warmup_progress.setFixedWidth(110)
+        self.warmup_progress.setVisible(False)
+        top_bar.addWidget(self.warmup_progress)
 
         self.theme_button = QToolButton()
         self.theme_button.setObjectName("themeButton")
@@ -252,6 +298,9 @@ class MainWindow(QMainWindow):
         self._load_current_list_page(initial=True)
 
     def _search_text(self, query: str, directory: object) -> None:
+        if self._model_warmup_state == MODEL_WARMUP_RUNNING:
+            self._show_model_waiting_message()
+            return
         scoped_directory = directory if isinstance(directory, str) else None
         label = scoped_directory or "all images"
         title = f'Search: "{query}" in {label}'
@@ -267,6 +316,9 @@ class MainWindow(QMainWindow):
         self._load_current_list_page(initial=True)
 
     def _request_import_folder(self) -> None:
+        if self._model_warmup_state == MODEL_WARMUP_RUNNING:
+            self._show_model_waiting_message()
+            return
         directory = QFileDialog.getExistingDirectory(self, "Import folder")
         if not directory:
             return
@@ -361,6 +413,9 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.welcome_view)
 
     def _request_similar_images(self, record: object) -> None:
+        if self._model_warmup_state == MODEL_WARMUP_RUNNING:
+            self._show_model_waiting_message()
+            return
         if isinstance(record, ImageRecord):
             title = f'Search: similar images to "{record.path}"'
             self.directory_view.set_loading(title, "Searching...")
@@ -416,6 +471,57 @@ class MainWindow(QMainWindow):
             lambda: self._load_list_records(offset),
             lambda images: self._finish_list_page(request_id, title, initial, images),
             lambda message: self._fail_list_page(request_id, title, initial, message),
+        )
+
+    @property
+    def model_warmup_state(self) -> str:
+        return self._model_warmup_state
+
+    def _start_model_warmup(self) -> None:
+        if self._startup_warmup_started:
+            return
+        self._startup_warmup_started = True
+        self._set_model_warmup_running()
+        self._run_worker(
+            self.service.warmup_models,
+            self._finish_model_warmup,
+            self._fail_model_warmup,
+        )
+
+    def _set_model_warmup_running(self) -> None:
+        self._model_warmup_state = MODEL_WARMUP_RUNNING
+        self.warmup_status.setText("Preparing search models...")
+        self.warmup_status.setVisible(True)
+        self.warmup_progress.setVisible(True)
+        self.statusBar().showMessage("Preparing search models...")
+        self._set_embedding_actions_enabled(False)
+
+    def _finish_model_warmup(self, _result: object) -> None:
+        self._model_warmup_state = MODEL_WARMUP_FINISHED
+        self.warmup_status.setVisible(False)
+        self.warmup_progress.setVisible(False)
+        self._set_embedding_actions_enabled(True)
+        self.statusBar().showMessage("Search models are ready.", 5000)
+
+    def _fail_model_warmup(self, message: str) -> None:
+        self._model_warmup_state = MODEL_WARMUP_FAILED
+        self.warmup_progress.setVisible(False)
+        self.warmup_status.setText("Search models unavailable.")
+        self.warmup_status.setVisible(True)
+        self._set_embedding_actions_enabled(True)
+        if not self._startup_warmup_failure_reported:
+            self.statusBar().showMessage(f"Model preparation failed: {message}", 7000)
+            self._startup_warmup_failure_reported = True
+
+    def _set_embedding_actions_enabled(self, enabled: bool) -> None:
+        self.search_bar.set_embedding_actions_enabled(enabled)
+        self.directory_panel.import_button.setEnabled(enabled)
+        self.details_view.set_embedding_actions_enabled(enabled)
+
+    def _show_model_waiting_message(self) -> None:
+        self.statusBar().showMessage(
+            "Search models are still being prepared. Try again in a moment.",
+            5000,
         )
 
     def _load_list_records(self, offset: int) -> list[ImageRecord]:
@@ -529,6 +635,10 @@ class MainWindow(QMainWindow):
             self.resize(size)
             return
         self.resize(1100, 720)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._start_model_warmup()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self.settings.setValue("window_size", self.size())

@@ -22,6 +22,12 @@ class SearchEngine:
         self._store = store
         self._embedder = embedder or Embedder()
 
+    def warmup_models(self) -> bool:
+        """Initialize both embedding models without running a search."""
+        _ = self._embedder.text_model
+        _ = self._embedder.image_model
+        return True
+
     def index_images(self, image_paths: Iterable[PathLike]) -> int:
         """Embed a batch of images and store them. Returns records stored."""
         paths = [str(p) for p in image_paths]

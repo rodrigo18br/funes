@@ -582,7 +582,7 @@ wheels = [
 ]
 
 [[package]]
-name = "funes"
+name = "funes-core"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

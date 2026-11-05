@@ -333,6 +333,10 @@ class SearchBar(FunesWidget):
             self.scope_button.setChecked(False)
         self._update_scope_text()
 
+    def set_embedding_actions_enabled(self, enabled: bool) -> None:
+        self.input.setEnabled(enabled)
+        self.scope_button.setEnabled(enabled and self._current_directory is not None)
+
     def _request_search(self) -> None:
         query = self.input.text().strip()
         if not query:
@@ -539,6 +543,9 @@ class ImageDetailsView(FunesWidget):
             self.metadata.setItem(row, 0, QTableWidgetItem(key))
             self.metadata.setItem(row, 1, QTableWidgetItem(value))
         self.metadata.resizeColumnsToContents()
+
+    def set_embedding_actions_enabled(self, enabled: bool) -> None:
+        self.similar_button.setEnabled(enabled)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         self._render_pixmap()

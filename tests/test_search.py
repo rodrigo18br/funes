@@ -26,6 +26,21 @@ def test_init_creates_default_embedder(embedder_cls: mock.Mock) -> None:
     assert engine._embedder is embedder_cls.return_value
 
 
+def test_warmup_models_touches_text_and_image_models() -> None:
+    store = mock.create_autospec(SQLiteStore, instance=True)
+    embedder = mock.create_autospec(Embedder, instance=True)
+    engine = SearchEngine(store, embedder)
+
+    result = engine.warmup_models()
+
+    assert result is True
+    assert embedder.text_model is not None
+    assert embedder.image_model is not None
+    embedder.embed_text.assert_not_called()
+    embedder.embed_image.assert_not_called()
+    embedder.embed_images.assert_not_called()
+
+
 def test_index_images_embeds_paths_and_stores_records() -> None:
     store = mock.create_autospec(SQLiteStore, instance=True)
     embedder = mock.create_autospec(Embedder, instance=True)
